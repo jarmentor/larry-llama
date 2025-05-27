@@ -1,0 +1,499 @@
+{
+  "name": "Larry Llama",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.chatInput ?? \"No Prompt\" }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        -220,
+        -60
+      ],
+      "id": "26112864-b277-417d-b63a-6dce4a45d4c8",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "llama3.1:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        160
+      ],
+      "id": "31dca842-e582-44a6-ab53-45a5c7f06b96",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "wH7hvSHxREqloWKt",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.body.sessionId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -140,
+        160
+      ],
+      "id": "beb69e5b-fa18-452a-a9cf-644ed71ca77a",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "NLEfEX4BtjyHsD2i",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "larry-llama",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        140
+      ],
+      "id": "85d28a01-f94f-4d17-b56b-2edddd19699a",
+      "name": "Webhook",
+      "webhookId": "27f6a1ea-4966-4a9e-9aee-03c1bfc81c2e"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        1140,
+        160
+      ],
+      "id": "b9fdd657-30cf-4eac-b567-75bdf33641bc",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        68,
+        360
+      ],
+      "id": "59db52c3-9998-4722-a65b-968a0ee16183",
+      "name": "Embeddings Ollama",
+      "credentials": {
+        "ollamaApi": {
+          "id": "wH7hvSHxREqloWKt",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "personal_knowledgebase",
+        "toolDescription": "Work with data in personal knowledgebase",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "knowledge_base",
+          "mode": "list",
+          "cachedResultName": "knowledge_base"
+        },
+        "topK": 5,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        -20,
+        160
+      ],
+      "id": "0015f1fe-0367-4b64-8b21-2ad5ae6d2a12",
+      "name": "Personal KB Retrieval",
+      "credentials": {
+        "qdrantApi": {
+          "id": "bRJ8gBfEZobuiPnf",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "triggerOn": "folder",
+        "path": "/data/personal_knowledge_base",
+        "events": [
+          "change",
+          "add"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.localFileTrigger",
+      "typeVersion": 1,
+      "position": [
+        -680,
+        720
+      ],
+      "id": "392a432c-e0d5-4ecb-aa76-be4457be33c1",
+      "name": "Local File Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6187692d-1c25-4b79-95f4-ee8c37d28a7f",
+              "name": "fileId",
+              "value": "=  {{ $json.path }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -460,
+        720
+      ],
+      "id": "2b31725a-add1-44bc-b91e-e539692ab9a9",
+      "name": "set fileId"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { OllamaEmbeddings } = require(\"@langchain/ollama\");\nconst { QdrantVectorStore } = require(\"@langchain/qdrant\");\n\nconst embeddings = new OllamaEmbeddings({\n  model: \"nomic-embed-text\",\n  baseUrl: \"http://host.docker.internals:11434\"\n});\n\nconst vectorStore = await QdrantVectorStore.fromExistingCollection(\n  embeddings,\n  {\n    url: \"http://qdrant:6333\",\n    collectionName: \"knowledge_base\",\n  }\n);\n\nconst fileIdToDelete = $json.fileId\n\nconst filter = {\n        must: [\n            {\n                key: \"metadata.fileId\",\n                match: {\n                    value: fileIdToDelete,\n                },\n            },\n        ],\n    }\n\nvectorStore.client.delete(\"knowledge_base\", {\n  filter\n});\n\nreturn [ {json: { file_id: fileIdToDelete } } ];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        720
+      ],
+      "id": "423bb69f-b715-49ef-8d3a-807c38dff67b",
+      "name": "Delete Previous Vectors For File"
+    },
+    {
+      "parameters": {
+        "jsCode": "const fetch = require('node-fetch');\nconst cheerio = require('cheerio');\n\nconst binaryProp = Object.keys(items[0].binary)[0];\nconst b64      = items[0].binary[binaryProp].data;\nconst mimeType = items[0].binary[binaryProp].mimeType;\n\n// 3. Decode and send to Tika\nconst buffer   = Buffer.from(b64, 'base64');\n\nconst res = await fetch('http://tika:9998/tika', {\n  method:  'PUT',\n  headers: { 'Content-Type': mimeType || 'application/octet-stream' },\n  body:    buffer,\n});\n\nconst extractedText = await res.text();\n\nconst $ = cheerio.load(extractedText);\n\nconst fullText = $('body').text().trim();\n\n// 4. Return in the shape n8n expects\nreturn [{\n  json: {\n    ...items[0].json,\n    // Flowise Default Data Loader by default looks for `text`\n    text: fullText,\n    // carry along any IDs or metadata you need downstream\n    fileName: items[0].json.fileName,\n    fileId:   items[0].json.fileId,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        720
+      ],
+      "id": "6d9a74ea-0c09-444a-b4aa-4acaac5af7da",
+      "name": "Extract Text Fa Sho"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.file_id.trim() }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        20,
+        720
+      ],
+      "id": "c4bf8dd6-f7dc-48d6-9946-ded8407b4088",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "knowledge_base",
+          "mode": "list",
+          "cachedResultName": "knowledge_base"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        720
+      ],
+      "id": "6f7fe530-539a-4d06-b915-f0c90c80535e",
+      "name": "Qdrant Vector Store",
+      "credentials": {
+        "qdrantApi": {
+          "id": "bRJ8gBfEZobuiPnf",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        560,
+        940
+      ],
+      "id": "800c4a1c-e1a3-4a71-940e-67bf34085fed",
+      "name": "Embeddings Ollama1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "wH7hvSHxREqloWKt",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "fileId",
+                "value": "={{ $('set fileId').item.json.fileId }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        780,
+        960
+      ],
+      "id": "08aa02ee-989f-4568-ba2d-04c3ab56543c",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkSize": 500,
+        "chunkOverlap": 50
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterTokenSplitter",
+      "typeVersion": 1,
+      "position": [
+        820,
+        1160
+      ],
+      "id": "42b0c8d6-38ea-4d1b-8142-2ef6ae261119",
+      "name": "Token Splitter"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { output: $json.output };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        160
+      ],
+      "id": "911f8bfa-f40c-4c8f-bb10-c9d08e14ba83",
+      "name": "Prepare Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Personal KB Retrieval",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Personal KB Retrieval": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local File Trigger": {
+      "main": [
+        [
+          {
+            "node": "set fileId",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set fileId": {
+      "main": [
+        [
+          {
+            "node": "Delete Previous Vectors For File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Previous Vectors For File": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract Text Fa Sho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text Fa Sho": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Ollama1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "58445405-df9a-40bd-a085-a9af321ce2d0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "930eb7c021d48c31219833f7a81078798ddd9e7fe3080387e803112bbb25f0f8"
+  },
+  "id": "o26FVxqbbGZ4SHid",
+  "tags": []
+}
