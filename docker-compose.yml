@@ -26,6 +26,23 @@ x-n8n: &service-n8n
     - postgres
 
 services:
+  crawler:
+    build:
+      context: ./crawl4ai-mcp
+    env_file: .env
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+    ports:
+      - "8051:8051"
+    networks: ['larry']
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_HOST=host.docker.internal:11434
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8051/health"]
+      interval: 10s
+      retries: 5
   tika:
     image: apache/tika:latest-full
     container_name: tika
@@ -44,7 +61,7 @@ services:
     ports:
         - 3001:3001
     extra_hosts:
-      - "host.docker.internal:host-gateway"        
+      - "host.docker.internal:host-gateway"
     volumes:
         - ~/.flowise:/root/.flowise
     entrypoint: /bin/sh -c "sleep 3; flowise start"
